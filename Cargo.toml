@@ -1,0 +1,12 @@
+[package]
+name = "spectral3d"
+version = "1.0.0"
+edition = "2021"
+description = "A spectral hashing method for 3D objects that generates stable shape fingerprints, allowing offline verification without needing to check against a central database."
+license = "MIT"
+homepage = "https://github.com/motoZ-crypto/spectral3d"
+repository = "https://github.com/motoZ-crypto/spectral3d.git"
+
+[dependencies]
+libm = "0.2.16"
+sha2 = "0.11.0"
