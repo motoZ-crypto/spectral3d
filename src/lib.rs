@@ -17,6 +17,12 @@
 //!   scan within ±½ bucket then recovers one deterministic identity hash that
 //!   verification reproduces and compares for equality.
 
+#![cfg_attr(not(test), no_std)]
+
+extern crate alloc;
+
+use alloc::{format, string::String};
+
 pub mod features;
 pub mod mesh;
 pub mod quant;

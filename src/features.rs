@@ -17,6 +17,8 @@
 //! changes these features only at float-roundoff level.
 
 use crate::sample::Samples;
+use alloc::vec;
+use libm::{sqrt, floor};
 
 pub const N_FEATURES: usize = 23;
 pub const HIST_BINS: usize = 8;
@@ -91,7 +93,7 @@ pub fn features(eigvals: [f64; 3], s: &Samples) -> [f64; N_FEATURES] {
     let mut w_total = 0.0;
     let mut r = vec![0.0; n];
     for (ri, (p, w)) in r.iter_mut().zip(s.points.iter().zip(s.weights.iter())) {
-        *ri = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+        *ri = sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
         w_total += *w;
     }
     let mut rbar = 0.0;
@@ -105,7 +107,7 @@ pub fn features(eigvals: [f64; 3], s: &Samples) -> [f64; N_FEATURES] {
     for (ri, w) in r.iter().zip(s.weights.iter()) {
         let t = (*ri / rbar).clamp(0.0, 2.0);
         let x = t / HIST_STEP - 0.5;
-        let j0 = x.floor();
+        let j0 = floor(x);
         let frac = x - j0;
         let j0i = j0 as i64;
         let lo = j0i.clamp(0, HIST_BINS as i64 - 1) as usize;
@@ -154,8 +156,8 @@ pub fn features(eigvals: [f64; 3], s: &Samples) -> [f64; N_FEATURES] {
                 sa += a[l][m] * a[l][m];
                 sb += bq[l][m] * bq[l][m];
             }
-            p[l - 1] = sa.sqrt() / w_sh;
-            q[l - 1] = sb.sqrt() / w_sh;
+            p[l - 1] = sqrt(sa) / w_sh;
+            q[l - 1] = sqrt(sb) / w_sh;
         }
     }
 
@@ -184,41 +186,41 @@ pub fn real_sh6(u: [f64; 3]) -> [f64; 49] {
     let y2 = y * y;
     let z2 = z * z;
     let mut o = [0.0; 49];
-    o[0] = 0.5 * (1.0 / pi).sqrt();
+    o[0] = 0.5 * sqrt(1.0 / pi);
 
     // l = 1
-    let c1 = (3.0 / (4.0 * pi)).sqrt();
+    let c1 = sqrt(3.0 / (4.0 * pi));
     o[1] = c1 * y;
     o[2] = c1 * z;
     o[3] = c1 * x;
 
     // l = 2
-    let c2a = 0.5 * (15.0 / pi).sqrt();
+    let c2a = 0.5 * sqrt(15.0 / pi);
     o[4] = c2a * x * y;
     o[5] = c2a * y * z;
-    o[6] = 0.25 * (5.0 / pi).sqrt() * (3.0 * z2 - 1.0);
+    o[6] = 0.25 * sqrt(5.0 / pi) * (3.0 * z2 - 1.0);
     o[7] = c2a * x * z;
-    o[8] = 0.25 * (15.0 / pi).sqrt() * (x2 - y2);
+    o[8] = 0.25 * sqrt(15.0 / pi) * (x2 - y2);
 
     // l = 3
-    o[9] = 0.25 * (35.0 / (2.0 * pi)).sqrt() * y * (3.0 * x2 - y2);
-    o[10] = 0.5 * (105.0 / pi).sqrt() * x * y * z;
-    o[11] = 0.25 * (21.0 / (2.0 * pi)).sqrt() * y * (5.0 * z2 - 1.0);
-    o[12] = 0.25 * (7.0 / pi).sqrt() * z * (5.0 * z2 - 3.0);
-    o[13] = 0.25 * (21.0 / (2.0 * pi)).sqrt() * x * (5.0 * z2 - 1.0);
-    o[14] = 0.25 * (105.0 / pi).sqrt() * z * (x2 - y2);
-    o[15] = 0.25 * (35.0 / (2.0 * pi)).sqrt() * x * (x2 - 3.0 * y2);
+    o[ 9] = 0.25 * sqrt( 35.0 / (2.0 * pi)) * y * (3.0 * x2 - y2);
+    o[10] = 0.5  * sqrt(105.0 /        pi ) * x * y * z;
+    o[11] = 0.25 * sqrt( 21.0 / (2.0 * pi)) * y * (5.0 * z2 - 1.0);
+    o[12] = 0.25 * sqrt(  7.0 /        pi ) * z * (5.0 * z2 - 3.0);
+    o[13] = 0.25 * sqrt( 21.0 / (2.0 * pi)) * x * (5.0 * z2 - 1.0);
+    o[14] = 0.25 * sqrt(105.0 /        pi ) * z * (x2 - y2);
+    o[15] = 0.25 * sqrt( 35.0 / (2.0 * pi)) * x * (x2 - 3.0 * y2);
 
     // l = 4
-    o[16] = 0.75 * (35.0 / pi).sqrt() * x * y * (x2 - y2);
-    o[17] = 0.75 * (35.0 / (2.0 * pi)).sqrt() * y * z * (3.0 * x2 - y2);
-    o[18] = 0.75 * (5.0 / pi).sqrt() * x * y * (7.0 * z2 - 1.0);
-    o[19] = 0.75 * (5.0 / (2.0 * pi)).sqrt() * y * z * (7.0 * z2 - 3.0);
-    o[20] = (3.0 / 16.0) * (1.0 / pi).sqrt() * (35.0 * z2 * z2 - 30.0 * z2 + 3.0);
-    o[21] = 0.75 * (5.0 / (2.0 * pi)).sqrt() * x * z * (7.0 * z2 - 3.0);
-    o[22] = (3.0 / 8.0) * (5.0 / pi).sqrt() * (x2 - y2) * (7.0 * z2 - 1.0);
-    o[23] = 0.75 * (35.0 / (2.0 * pi)).sqrt() * x * z * (x2 - 3.0 * y2);
-    o[24] = (3.0 / 16.0) * (35.0 / pi).sqrt() * (x2 * x2 - 6.0 * x2 * y2 + y2 * y2);
+    o[16] =  0.75        * sqrt(35.0 /        pi ) * x * y * (x2 - y2);
+    o[17] =  0.75        * sqrt(35.0 / (2.0 * pi)) * y * z * (3.0 * x2 - y2);
+    o[18] =  0.75        * sqrt( 5.0 /        pi ) * x * y * (7.0 * z2 - 1.0);
+    o[19] =  0.75        * sqrt( 5.0 / (2.0 * pi)) * y * z * (7.0 * z2 - 3.0);
+    o[20] = (3.0 / 16.0) * sqrt( 1.0 /        pi ) * (35.0 * z2 * z2 - 30.0 * z2 + 3.0);
+    o[21] =  0.75        * sqrt( 5.0 / (2.0 * pi)) * x * z * (7.0 * z2 - 3.0);
+    o[22] = (3.0 /  8.0) * sqrt( 5.0 /        pi ) * (x2 - y2) * (7.0 * z2 - 1.0);
+    o[23] =  0.75        * sqrt(35.0 / (2.0 * pi)) * x * z * (x2 - 3.0 * y2);
+    o[24] = (3.0 / 16.0) * sqrt(35.0 /        pi ) * (x2 * x2 - 6.0 * x2 * y2 + y2 * y2);
 
     // l = 5, 6: azimuthal Cartesian polynomials A_m = Re[(x+iy)^m] (= am[m])
     // and B_m = Im[(x+iy)^m] (= bm[m]) via the complex-power recurrence.
@@ -233,7 +235,7 @@ pub fn real_sh6(u: [f64; 3]) -> [f64; 49] {
     let s2 = core::f64::consts::SQRT_2;
 
     // l = 5: K_5^m = √(11/(4π) · (5−m)!/(5+m)!), Legendre derivatives D_5^m(z).
-    let k5 = |ratio: f64| (11.0 / (4.0 * pi) * ratio).sqrt();
+    let k5 = |ratio: f64| sqrt(11.0 / (4.0 * pi) * ratio);
     let d5_0 = (63.0 * z2 * z2 * z - 70.0 * z2 * z + 15.0 * z) / 8.0;
     let d5_1 = (315.0 * z2 * z2 - 210.0 * z2 + 15.0) / 8.0;
     let d5_2 = (1260.0 * z2 * z - 420.0 * z) / 8.0;
@@ -258,9 +260,9 @@ pub fn real_sh6(u: [f64; 3]) -> [f64; 49] {
     o[25] = n55 * bm[5] * d5_5;
 
     // l = 6: K_6^m = √(13/(4π) · (6−m)!/(6+m)!), Legendre derivatives D_6^m(z).
-    let k6 = |ratio: f64| (13.0 / (4.0 * pi) * ratio).sqrt();
-    let d6_0 = (231.0 * z2 * z2 * z2 - 315.0 * z2 * z2 + 105.0 * z2 - 5.0) / 16.0;
-    let d6_1 = (1386.0 * z2 * z2 * z - 1260.0 * z2 * z + 210.0 * z) / 16.0;
+    let k6 = |ratio: f64| sqrt(13.0 / (4.0 * pi) * ratio);
+    let d6_0 = ( 231.0 * z2 * z2 * z2 - 315.0 * z2 * z2 + 105.0 * z2 - 5.0) / 16.0;
+    let d6_1 = (1386.0 * z2 * z2 * z - 1260.0 * z2 * z  + 210.0 * z) / 16.0;
     let d6_2 = (6930.0 * z2 * z2 - 3780.0 * z2 + 210.0) / 16.0;
     let d6_3 = (27720.0 * z2 * z - 7560.0 * z) / 16.0;
     let d6_4 = (83160.0 * z2 - 7560.0) / 16.0;
@@ -315,7 +317,7 @@ mod tests {
             [-2.0, 1.0, 5.0],
         ];
         for d in dirs {
-            let n = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+            let n = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
             let d = [d[0] / n, d[1] / n, d[2] / n];
             let y = real_sh6(d);
             let mut idx = 0;
