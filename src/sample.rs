@@ -6,6 +6,8 @@
 //! exactly with rigid motion and is unaffected by face/vertex ordering.
 
 use crate::mesh::{cross, sub, Mesh};
+use alloc::vec::Vec;
+use libm::{ceil, sqrt};
 
 pub struct Samples {
     pub points: Vec<[f64; 3]>,
@@ -24,7 +26,7 @@ pub fn sample_surface(mesh: &Mesh, target: usize) -> Samples {
     for &f in &mesh.faces {
         let (a, b, c) = mesh.tri(f);
         let n = cross(sub(b, a), sub(c, a));
-        let area = 0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        let area = 0.5 * sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
         areas.push(area);
         total += area;
     }
@@ -49,7 +51,7 @@ pub fn sample_surface(mesh: &Mesh, target: usize) -> Samples {
         // alone dominates the surface, but the result is deterministic, so it
         // shifts no identity and is absorbed by the quant buckets. The floor of
         // 1 is definitional: a face needs at least one sample.
-        let k = ((area / per).sqrt().ceil() as usize).clamp(1, 64);
+        let k = (ceil(sqrt(area / per)) as usize).clamp(1, 64);
         let (a, b, c) = mesh.tri(f);
         let w = area / (k * k) as f64;
         let kf = (3 * k) as f64;

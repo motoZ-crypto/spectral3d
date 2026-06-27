@@ -5,6 +5,9 @@
 //! equivariant under rigid motion and scaling. No reference frame, axis
 //! ordering, or start vertex is ever chosen.
 
+use alloc::{format, string::String, vec::Vec};
+use libm::{cbrt, sqrt, acos, cos};
+
 #[derive(Debug, Clone)]
 pub struct Mesh {
     pub vertices: Vec<[f64; 3]>,
@@ -60,7 +63,7 @@ impl core::fmt::Display for MeshError {
     }
 }
 
-impl std::error::Error for MeshError {}
+impl core::error::Error for MeshError {}
 
 pub(crate) fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -264,10 +267,10 @@ impl Mesh {
     /// winding is [`Mesh::check_consistent_shells`]'s job, run right after in
     /// [`normalize`].
     pub fn check_closed(&self) -> Result<(), MeshError> {
-        use std::collections::HashMap;
+        use alloc::collections::BTreeMap;
         // Per undirected edge: how many half-edges touch it, and their net
         // winding (opposite directions cancel to zero).
-        let mut edges: HashMap<(u32, u32), (u32, i32)> = HashMap::new();
+        let mut edges: BTreeMap<(u32, u32), (u32, i32)> = BTreeMap::new();
         for &[i, j, k] in &self.faces {
             for (a, b) in [(i, j), (j, k), (k, i)] {
                 if a == b {
@@ -279,11 +282,9 @@ impl Mesh {
                 e.1 += dir;
             }
         }
-        // `edges` is a HashMap, so when several edges are malformed, which one
-        // gets reported first varies between runs. That only colours the
-        // diagnostic text of an already-rejected mesh. The accept/reject
-        // verdict, and every valid mesh's identity, come from ordered Vec
-        // traversals and stay deterministic.
+        // `edges` is a BTreeMap, so iteration is ordered and the first reported
+        // malformed edge is deterministic. The accept/reject verdict, and every
+        // valid mesh's identity, come from ordered Vec traversals regardless.
         for (&(a, b), &(count, winding)) in &edges {
             if count != 2 {
                 return Err(MeshError::NotClosed(format!(
@@ -318,7 +319,7 @@ impl Mesh {
     /// reference point. The shared vertex mean only keeps the tetrahedra
     /// object-sized, same reason as [`Mesh::volume_centroid`].
     pub fn check_consistent_shells(&self) -> Result<(), MeshError> {
-        use std::collections::HashMap;
+        use alloc::collections::BTreeMap;
         let n = self.faces.len();
         // Union-find over faces. Two faces merge when they share an edge.
         let mut parent: Vec<usize> = (0..n).collect();
@@ -329,7 +330,7 @@ impl Mesh {
             }
             x
         }
-        let mut seen: HashMap<(u32, u32), usize> = HashMap::new();
+        let mut seen: BTreeMap<(u32, u32), usize> = BTreeMap::new();
         for (fi, &[i, j, k]) in self.faces.iter().enumerate() {
             for (a, b) in [(i, j), (j, k), (k, i)] {
                 let key = if a < b { (a, b) } else { (b, a) };
@@ -346,7 +347,7 @@ impl Mesh {
 
         // Signed volume per shell, tetrahedra against the shared vertex mean.
         let o = self.vertex_mean();
-        let mut vol: HashMap<usize, f64> = HashMap::new();
+        let mut vol: BTreeMap<usize, f64> = BTreeMap::new();
         for fi in 0..n {
             let r = find(&mut parent, fi);
             let (a, b, c) = self.tri(self.faces[fi]);
@@ -417,7 +418,7 @@ pub fn normalize(mut mesh: Mesh) -> Result<Normalized, MeshError> {
             p[k] -= c[k];
         }
     }
-    let s = libm::cbrt(vol.abs()).recip();
+    let s = 1.0 / cbrt(vol.abs());
     for p in &mut mesh.vertices {
         for pk in p.iter_mut() {
             *pk *= s;
@@ -455,11 +456,14 @@ pub fn normalize(mut mesh: Mesh) -> Result<Normalized, MeshError> {
 pub fn eigvals_sym3(a: [[f64; 3]; 3]) -> [f64; 3] {
     let p1 = a[0][1] * a[0][1] + a[0][2] * a[0][2] + a[1][2] * a[1][2];
     let q = (a[0][0] + a[1][1] + a[2][2]) / 3.0;
-    let p2 = (a[0][0] - q).powi(2) + (a[1][1] - q).powi(2) + (a[2][2] - q).powi(2) + 2.0 * p1;
+    let p2 = (a[0][0] - q) * (a[0][0] - q)
+                + (a[1][1] - q) * (a[1][1] - q)
+                + (a[2][2] - q) * (a[2][2] - q)
+                + 2.0 * p1;
     if p2 <= 1e-300 {
         return [q, q, q];
     }
-    let p = (p2 / 6.0).sqrt();
+    let p = sqrt(p2 / 6.0);
     let mut b = [[0.0; 3]; 3];
     for i in 0..3 {
         for j in 0..3 {
@@ -467,12 +471,12 @@ pub fn eigvals_sym3(a: [[f64; 3]; 3]) -> [f64; 3] {
         }
     }
     let detb = b[0][0] * (b[1][1] * b[2][2] - b[1][2] * b[2][1])
-        - b[0][1] * (b[1][0] * b[2][2] - b[1][2] * b[2][0])
-        + b[0][2] * (b[1][0] * b[2][1] - b[1][1] * b[2][0]);
+                  - b[0][1] * (b[1][0] * b[2][2] - b[1][2] * b[2][0])
+                  + b[0][2] * (b[1][0] * b[2][1] - b[1][1] * b[2][0]);
     let r = (detb / 2.0).clamp(-1.0, 1.0);
-    let phi = libm::acos(r) / 3.0;
-    let e1 = q + 2.0 * p * libm::cos(phi);
-    let e3 = q + 2.0 * p * libm::cos(phi + 2.0 * core::f64::consts::PI / 3.0);
+    let phi = acos(r) / 3.0;
+    let e1 = q + 2.0 * p * cos(phi);
+    let e3 = q + 2.0 * p * cos(phi + 2.0 * core::f64::consts::PI / 3.0);
     let e2 = 3.0 * q - e1 - e3;
     // Defensive descending sort: closes any roundoff-induced order violation
     // near degeneracy so lam21/lam31 never swap between scans (see doc above).

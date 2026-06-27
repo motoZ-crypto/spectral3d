@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 
 use crate::mesh::Mesh;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::f64::consts::PI;
 
 /// UV-sphere with radial function r(θ, φ). Closed manifold with two poles.

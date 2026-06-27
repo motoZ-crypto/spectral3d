@@ -37,6 +37,8 @@
 
 use sha2::{Digest, Sha256};
 
+use alloc::string::String;
+use libm::round;
 use crate::features::N_FEATURES;
 
 /// Protocol identifier, part of every hash preimage, so any parameter or
@@ -115,7 +117,7 @@ pub fn sketch(f: &[f64; N_FEATURES], p: &QuantParams) -> (String, Helper) {
     let mut offsets = [0.0f64; N_FEATURES];
     for i in 0..N_FEATURES {
         let x = f[i] / (QUANT_STEP[i] * p.scale);
-        let c = x.round();
+        let c = round(x);
         b[i] = c as i64;
         offsets[i] = x - c;
     }
@@ -132,7 +134,7 @@ pub fn recover(f: &[f64; N_FEATURES], h: &Helper, p: &QuantParams) -> String {
     let mut b = [0i64; N_FEATURES];
     for i in 0..N_FEATURES {
         let x = f[i] / (QUANT_STEP[i] * p.scale);
-        b[i] = (x - h.offsets[i]).round() as i64;
+        b[i] = round(x - h.offsets[i]) as i64;
     }
     hash_buckets(PROTOCOL, &b)
 }

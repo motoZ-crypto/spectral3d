@@ -17,6 +17,16 @@
 //!   scan within ±½ bucket then recovers one deterministic identity hash that
 //!   verification reproduces and compares for equality.
 
+#![no_std]
+
+extern crate alloc;
+
+#[cfg(test)]
+#[macro_use]
+extern crate std;
+
+use alloc::{format, string::String};
+
 pub mod features;
 pub mod mesh;
 pub mod quant;
@@ -119,6 +129,7 @@ pub fn verify(obj: &[u8], helper: &Helper, params: &SpectralParams) -> Result<St
 #[cfg(test)]
 mod e2e {
     use super::*;
+    use alloc::vec::Vec;
     use crate::mesh::Mesh;
     use crate::testutil::{
         bumpy, bumpy_b, radial_noise, reorder, rms_radius, rotate, scale, superellipsoid,

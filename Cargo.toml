@@ -9,4 +9,4 @@ repository = "https://github.com/motoZ-crypto/spectral3d.git"
 
 [dependencies]
 libm = "0.2.16"
-sha2 = "0.11.0"
+sha2 = { version = "0.11.0", default-features = false }
