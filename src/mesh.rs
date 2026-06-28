@@ -16,7 +16,6 @@ pub struct Mesh {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MeshError {
-    Parse(String),
     /// Geometry too degenerate to measure: a zero or near-zero volume (flat
     /// or coplanar mesh), or a covariance with a non-finite or non-positive
     /// eigenvalue. Raised by [`normalize`] before feature extraction.
@@ -26,12 +25,13 @@ pub enum MeshError {
     /// or too regular (near sphere or cube, nothing to anchor on). Raised by
     /// the registration shape gate. See [`crate::features::weak_shape`].
     WeakShape(String),
-    /// The face set isn't a closed, consistently oriented surface: an open
-    /// shell, a hole, a non-manifold edge, or mixed winding. The divergence-
-    /// theorem integrals only mean anything on a watertight oriented manifold.
-    /// A single missing face already makes the volume swing with the coordinate
-    /// origin, so this is rejected up front instead of silently hashing a
-    /// pose-dependent identity. Raised by [`normalize`].
+    /// The face set isn't a closed, consistently oriented surface: a face
+    /// index pointing past the vertex array, an open shell, a hole, a
+    /// non-manifold edge, or mixed winding. The divergence-theorem integrals
+    /// only mean anything on a watertight oriented manifold. A single missing
+    /// face already makes the volume swing with the coordinate origin, so this
+    /// is rejected up front instead of silently hashing a pose-dependent
+    /// identity. Raised by [`normalize`].
     NotClosed(String),
     /// The shells don't all wind the same way, or one shell closes around a
     /// vanishing volume. [`Mesh::check_closed`] confirms each connected shell is
@@ -53,7 +53,6 @@ pub enum MeshError {
 impl core::fmt::Display for MeshError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            MeshError::Parse             (m) => write!(f, "obj parse error: {m}"),
             MeshError::Degenerate        (m) => write!(f, "degenerate mesh: {m}"),
             MeshError::WeakShape         (m) => write!(f, "weak shape (rejected at registration): {m}"),
             MeshError::NotClosed         (m) => write!(f, "mesh is not a closed oriented manifold: {m}"),
@@ -82,84 +81,6 @@ pub(crate) fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 }
 
 impl Mesh {
-    /// Minimal OBJ reader: `v x y z` and `f i j k ...` (polygons fan-
-    /// triangulated from the first listed vertex, `i/t/n` and negative
-    /// indices supported). Everything else is ignored.
-    ///
-    /// The fan apex is the face's first vertex. A planar polygon gives the
-    /// same integrals however it is written, but a *non-planar* n-gon (n >= 4)
-    /// is genuinely ambiguous: a cyclic rewrite of its vertex list fans into
-    /// different triangles and a slightly different solid. Such a face has no
-    /// well-defined surface to begin with, so feed triangles or planar
-    /// polygons when a stable identity matters.
-    pub fn parse_obj(bytes: &[u8]) -> Result<Mesh, MeshError> {
-        let text = String::from_utf8_lossy(bytes);
-        let mut vertices: Vec<[f64; 3]> = Vec::new();
-        let mut faces: Vec<[u32; 3]> = Vec::new();
-        for (lineno, raw) in text.lines().enumerate() {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let mut it = line.split_whitespace();
-            match it.next() {
-                Some("v") => {
-                    let mut p = [0f64; 3];
-                    for c in p.iter_mut() {
-                        let tok = it.next().ok_or_else(|| {
-                            MeshError::Parse(format!("line {}: vertex needs 3 coords", lineno + 1))
-                        })?;
-                        *c = tok.parse::<f64>().map_err(|_| {
-                            MeshError::Parse(format!("line {}: bad float '{tok}'", lineno + 1))
-                        })?;
-                    }
-                    vertices.push(p);
-                }
-                Some("f") => {
-                    let mut idx: Vec<u32> = Vec::new();
-                    for tok in it {
-                        let first = tok.split('/').next().unwrap_or("");
-                        let i = first.parse::<i64>().map_err(|_| {
-                            MeshError::Parse(format!("line {}: bad index '{tok}'", lineno + 1))
-                        })?;
-                        let resolved = if i > 0 {
-                            i - 1
-                        } else if i < 0 {
-                            vertices.len() as i64 + i
-                        } else {
-                            return Err(MeshError::Parse(format!(
-                                "line {}: zero index",
-                                lineno + 1
-                            )));
-                        };
-                        if resolved < 0 || resolved >= vertices.len() as i64 {
-                            return Err(MeshError::Parse(format!(
-                                "line {}: index {} out of range",
-                                lineno + 1,
-                                i
-                            )));
-                        }
-                        idx.push(resolved as u32);
-                    }
-                    if idx.len() < 3 {
-                        return Err(MeshError::Parse(format!(
-                            "line {}: face needs >= 3 vertices",
-                            lineno + 1
-                        )));
-                    }
-                    for k in 1..idx.len() - 1 {
-                        faces.push([idx[0], idx[k], idx[k + 1]]);
-                    }
-                }
-                _ => {}
-            }
-        }
-        if vertices.is_empty() || faces.is_empty() {
-            return Err(MeshError::Parse("no geometry".into()));
-        }
-        Ok(Mesh { vertices, faces })
-    }
-
     pub(crate) fn tri(&self, f: [u32; 3]) -> ([f64; 3], [f64; 3], [f64; 3]) {
         (
             self.vertices[f[0] as usize],
@@ -259,19 +180,31 @@ impl Mesh {
     }
 
     /// Verify the faces form a closed, consistently-oriented triangle mesh:
-    /// every undirected edge shared by exactly two triangles of opposite
-    /// winding. This is the precondition the divergence-theorem integrals
-    /// assume. Without it the volume and moments are neither physically
-    /// meaningful nor translation-invariant. Disjoint closed shells each pass
-    /// here, since their edges still pair up internally. Pinning their relative
-    /// winding is [`Mesh::check_consistent_shells`]'s job, run right after in
-    /// [`normalize`].
+    /// every index points at a real vertex, and every undirected edge is shared
+    /// by exactly two triangles of opposite winding. This is the precondition
+    /// the divergence-theorem integrals assume. Without it the volume and
+    /// moments are neither physically meaningful nor translation-invariant.
+    /// Disjoint closed shells each pass here, since their edges still pair up
+    /// internally. Pinning their relative winding is
+    /// [`Mesh::check_consistent_shells`]'s job, run right after in [`normalize`].
+    ///
+    /// The index-range check is the contract the vertex/face arrays carry on
+    /// their own: every later `self.vertices[idx]` deref relies on it. The old
+    /// OBJ reader enforced it at parse time; with meshes handed in directly it
+    /// belongs to the first structural gate.
     pub fn check_closed(&self) -> Result<(), MeshError> {
         use alloc::collections::BTreeMap;
+        let n = self.vertices.len();
         // Per undirected edge: how many half-edges touch it, and their net
         // winding (opposite directions cancel to zero).
         let mut edges: BTreeMap<(u32, u32), (u32, i32)> = BTreeMap::new();
         for &[i, j, k] in &self.faces {
+            if i.max(j).max(k) as usize >= n {
+                return Err(MeshError::NotClosed(format!(
+                    "face index {} points past the {n}-vertex array",
+                    i.max(j).max(k)
+                )));
+            }
             for (a, b) in [(i, j), (j, k), (k, i)] {
                 if a == b {
                     return Err(MeshError::NotClosed(format!("degenerate edge ({a}, {a})")));
@@ -521,64 +454,14 @@ mod tests {
         Mesh { vertices, faces }
     }
 
-    const CUBE_OBJ: &str = "\
-# unit cube, mixed face formats
-v 0 0 0
-v 1 0 0
-v 1 1 0
-v 0 1 0
-v 0 0 1
-v 1 0 1
-v 1 1 1
-v 0 1 1
-f 1//1 3//1 2//1
-f 1 4 3
-f 5/1/1 6/1/1 7/1/1
-f 5 7 8
-f -8 -7 -3
-f -8 -3 -4
-f 3//2 4//2 8//2
-f 3 8 7
-f 1//3 5//3 8//3
-f 1 8 4
-f 2//4 3//4 7//4
-f 2 7 6
-";
-
+    /// A face index past the vertex array is rejected up front, not left to
+    /// panic on the first `self.vertices[idx]` deref downstream.
     #[test]
-    fn parse_obj_mixed_formats() {
-        let m = Mesh::parse_obj(CUBE_OBJ.as_bytes()).unwrap();
-        assert_eq!(m.vertices.len(), 8);
-        assert_eq!(m.faces.len(), 12);
-        let (v, c) = m.volume_centroid();
-        assert!((v - 1.0).abs() < 1e-12, "volume {v}");
-        for k in 0..3 {
-            assert!((c[k] - 0.5).abs() < 1e-12, "centroid {c:?}");
-        }
-    }
-
-    #[test]
-    fn parse_obj_quads_fan() {
-        let quad_cube = "\
-v 0 0 0
-v 1 0 0
-v 1 1 0
-v 0 1 0
-v 0 0 1
-v 1 0 1
-v 1 1 1
-v 0 1 1
-f 1 4 3 2
-f 5 6 7 8
-f 1 2 6 5
-f 3 4 8 7
-f 1 5 8 4
-f 2 3 7 6
-";
-        let m = Mesh::parse_obj(quad_cube.as_bytes()).unwrap();
-        assert_eq!(m.faces.len(), 12);
-        let (v, _) = m.volume_centroid();
-        assert!((v - 1.0).abs() < 1e-12, "volume {v}");
+    fn out_of_range_index_is_rejected() {
+        let mut m = box_mesh(1.0, 2.0, 3.0);
+        m.faces[0][2] = m.vertices.len() as u32; // one past the end
+        assert!(matches!(m.check_closed(), Err(MeshError::NotClosed(_))));
+        assert!(matches!(normalize(m), Err(MeshError::NotClosed(_))));
     }
 
     #[test]

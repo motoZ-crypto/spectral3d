@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 
 use crate::mesh::Mesh;
-use alloc::string::String;
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
@@ -265,18 +264,6 @@ pub fn tamper_bump(mesh: &Mesh, amp_abs: f64, sigma_ang: f64, dir: [f64; 3]) -> 
         }
     }
     out
-}
-
-/// Plain OBJ writer (v/f only) for end-to-end tests.
-pub fn to_obj(mesh: &Mesh) -> Vec<u8> {
-    let mut s = String::new();
-    for v in &mesh.vertices {
-        s.push_str(&format!("v {} {} {}\n", v[0], v[1], v[2]));
-    }
-    for f in &mesh.faces {
-        s.push_str(&format!("f {} {} {}\n", f[0] + 1, f[1] + 1, f[2] + 1));
-    }
-    s.into_bytes()
 }
 
 #[cfg(test)]
